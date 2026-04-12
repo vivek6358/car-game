@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Car Runner Fixed</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="m-0 overflow-hidden bg-sky-300 font-sans overscroll-none touch-none">
+
+<!-- Loading -->
+<div id="loading" class="fixed inset-0 flex items-center justify-center bg-black text-white text-2xl z-50">
+  Loading...
+</div>
+
+<!-- Game -->
+<div id="game" class="relative w-full h-screen overflow-hidden">
+
+  <!-- Road -->
+  <div id="road" class="absolute left-1/2 transform -translate-x-1/2 w-[260px] h-full bg-gray-800 overflow-hidden"></div>
+
+  <!-- Score -->
+  <div id="score" class="absolute top-4 left-4 text-white text-xl font-bold z-20">
+    Score: 0
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameOver" class="hidden absolute inset-0 flex flex-col items-center justify-center text-red-500 text-4xl font-bold z-30">
+    GAME OVER!
+    <button id="restart" class="mt-4 px-4 py-2 bg-white text-black rounded">Restart</button>
+  </div>
+
+  <!-- Controls -->
+  <button id="leftBtn" class="absolute bottom-6 left-4 w-16 h-16 rounded-full bg-white/40 active:bg-white/70 text-xl z-20">◀</button>
+  <button id="rightBtn" class="absolute bottom-6 right-4 w-16 h-16 rounded-full bg-white/40 active:bg-white/70 text-xl z-20">▶</button>
+
+  <!-- Player (Car 4) -->
+  <img id="player" src="car4.png"
+    class="absolute w-14 bottom-6 left-1/2 transform -translate-x-1/2 z-20">
+
+</div>
+
+<script>
+const player = document.getElementById("player");
+const road = document.getElementById("road");
+const scoreDisplay = document.getElementById("score");
+const gameOverScreen = document.getElementById("gameOver");
+const restartBtn = document.getElementById("restart");
+const loading = document.getElementById("loading");
+
+const leftBtn = document.getElementById("leftBtn");
+const rightBtn = document.getElementById("rightBtn");
+
+let score = 0;
+let speed = 5;
+let isGameOver = false;
+
+let playerX = 0;
+const laneWidth = 80;
+const lanes = [-laneWidth, 0, laneWidth];
+
+const enemies = [];
+const points = [];
+const laneLines = [];
+
+// 🚧 IMPORTANT FIX: Track used lanes
+let activeLanes = new Set();
+
+const enemyImages = [
+  "car1.png",
+  "car2.png",
+  "car3.png"
+];
+
+// Lane lines
+function createLanes() {
+  for (let i = 0; i < 10; i++) {
+    const line = document.createElement("div");
+    line.className = "absolute w-2 h-16 bg-white left-1/2 -translate-x-1/2";
+    line.style.top = (i * 100) + "px";
+    road.appendChild(line);
+    laneLines.push(line);
+  }
+}
+
+// 🚧 FIXED enemy spawning
+function createEnemy() {
+  if (enemies.length >= 2) return; // max 2 enemies only
+
+  const available = lanes.filter(l => 
+    !enemies.some(e => parseInt(e.dataset.lane) === l)
+  );
+
+  if (available.length === 0) return;
+
+  const lane = available[Math.floor(Math.random() * available.length)];
+
+  const enemy = document.createElement("img");
+  enemy.src = enemyImages[Math.floor(Math.random() * enemyImages.length)];
+  enemy.className = "absolute w-14";
+
+  enemy.dataset.lane = lane;
+  enemy.style.left = `calc(50% + ${lane}px - 28px)`;
+  enemy.style.top = "-100px";
+
+  road.appendChild(enemy);
+  enemies.push(enemy);
+}
+
+// Points
+function createPoint() {
+  const point = document.createElement("div");
+  point.className = "absolute w-4 h-4 bg-yellow-300 rounded-full shadow-lg";
+
+  const lane = lanes[Math.floor(Math.random() * lanes.length)];
+  point.style.left = `calc(50% + ${lane}px - 8px)`;
+  point.style.top = "-50px";
+
+  road.appendChild(point);
+  points.push(point);
+}
+
+// Player movement
+function movePlayer(dir) {
+  if (isGameOver) return;
+  playerX += dir * laneWidth;
+  playerX = Math.max(-laneWidth, Math.min(laneWidth, playerX));
+  player.style.left = `calc(50% + ${playerX}px)`;
+}
+
+// Collision
+function isColliding(a, b) {
+  const r1 = a.getBoundingClientRect();
+  const r2 = b.getBoundingClientRect();
+
+  return !(
+    r1.top > r2.bottom ||
+    r1.bottom < r2.top ||
+    r1.right < r2.left ||
+    r1.left > r2.right
+  );
+}
+
+// Game loop
+function gameLoop() {
+  if (isGameOver) return;
+
+  // Move lane lines
+  laneLines.forEach(line => {
+    let top = parseInt(line.style.top);
+    top += speed;
+    if (top > window.innerHeight) top = -100;
+    line.style.top = top + "px";
+  });
+
+  // Move enemies
+ enemies.forEach((enemy, i) => {
+  let top = parseInt(enemy.style.top);
+  top += speed;
+
+  if (top > window.innerHeight) {
+    enemy.remove();
+    enemies.splice(i, 1);
+  } else {
+    enemy.style.top = top + "px";
+
+    if (isColliding(player, enemy)) {
+      endGame();
+    }
+  }
+});
+
+  // Move points
+  points.forEach((point, i) => {
+    let top = parseInt(point.style.top);
+    top += speed;
+
+    if (top > window.innerHeight) {
+      point.remove();
+      points.splice(i, 1);
+      createPoint();
+    } else {
+      point.style.top = top + "px";
+
+      if (isColliding(player, point)) {
+        score += 10;
+        scoreDisplay.innerText = "Score: " + score;
+
+        point.remove();
+        points.splice(i, 1);
+        createPoint();
+      }
+    }
+  });
+
+  // ALWAYS try to maintain enemies
+if (enemies.length < 2) {
+  createEnemy();
+}
+
+  requestAnimationFrame(gameLoop);
+}
+
+// End game
+function endGame() {
+  isGameOver = true;
+  gameOverScreen.classList.remove("hidden");
+}
+
+// Restart
+restartBtn.onclick = () => location.reload();
+
+// Controls
+leftBtn.addEventListener("touchstart", e => {
+  e.preventDefault();
+  movePlayer(-1);
+});
+
+rightBtn.addEventListener("touchstart", e => {
+  e.preventDefault();
+  movePlayer(1);
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "a") movePlayer(-1);
+  if (e.key === "ArrowRight" || e.key === "d") movePlayer(1);
+});
+
+// Init
+function init() {
+  createLanes();
+
+  // Start with ONLY 2 enemies max
+  createEnemy();
+  createEnemy();
+
+  createPoint();
+  createPoint();
+
+  setTimeout(() => {
+    loading.style.display = "none";
+    gameLoop();
+  }, 800);
+}
+
+init();
+</script>
+
+</body>
+</html>
